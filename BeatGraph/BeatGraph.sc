@@ -21,19 +21,79 @@ BeatGraph {
 		^obj;
     }
 
-	*simpleBin {|numDivs=16, numOcts=(-1), beatDecay=0.1, numBeats=4, floorOffset = 0.0| //beat graph of simple binary bar
-		var arr;
-		beatDecay = beatDecay.max(0.01);
-		if(numOcts < 1) {numOcts = numDivs.log2.round} {numDivs=2.pow(numOcts)};
+	*simple2 {|numDivs=8, numLayers=(-1), beatDecay=0.1, numBeats=2, floorOffset = 0.0| //beat graph of simple binary bar
+		var arr, divisor;
+		beatDecay = beatDecay.max(0.001);
+		if(numLayers < 1) {numLayers = numDivs.log2.round} {numDivs=2.pow(numLayers)};
+		divisor = all {:1/x, x <- (1..numLayers)}.sum;
 		arr = Array.fill(numDivs, {|idx|
 			({|oct|
 				oct = oct + 1;
-				NormTrig.normCos(idx, 2.pow(oct.neg)) / oct
-			}.sum(numOcts) / all {:1/x, x <- (1..numOcts)}.sum)
+				NormTrig.normCos(idx, 0.5.pow(oct)) / oct
+			}.sum(numLayers) / divisor)
 			.pow(2) * ((idx/numDivs).pow(1/beatDecay).neg + 1); //decay beat as bar progresses
 		});
 
 		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
+	}
+
+	*simpleN {|numDivs=3, numLayers=3, beatDecay=0.1, numBeats=3, floorOffset = 0.0|
+		var arr, divisor;
+		beatDecay = beatDecay.max(0.001);
+		if(numLayers < 1) {numLayers = this.getNumLayers(numDivs, numBeats)-1} {numDivs=2.pow(numLayers)};
+		divisor = all {:1/x, x <- (1..numLayers)}.sum;
+		arr = Array.fill(numDivs, {|idx|
+			({|oct|
+				oct = oct + 1;
+				NormTrig.normCos(idx, 0.5.pow(oct)) / oct
+			}.sum(numLayers) / divisor)
+			.pow(2) * ((idx/numDivs).pow(1/beatDecay.pow(2)).neg + 1); //decay beat as bar progresses
+		})!numBeats;
+		arr = arr.flatten;
+		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
+	}
+
+	*cascade3 {|numDivs=9, numLayers=(-1), beatDecay=0.1, numBeats=3, floorOffset = 0.0| //beat graph of cascading ternary measure
+		var arr, divisor;
+		beatDecay = beatDecay.max(0.001);
+		if(numLayers < 1) {numLayers = this.getNumLayers(numDivs, 3)} {numDivs=3.pow(numLayers)};
+		divisor = all {:1/x, x <- (1..numLayers)}.sum;
+		arr = Array.fill(numDivs, {|idx|
+			({|rec|
+				rec = rec + 1;
+				NormTrig.normCos(idx, 3.pow(rec.neg)) / rec
+			}.sum(numLayers) / divisor)
+			.pow(1.5) * ((idx/numDivs).pow(1/beatDecay).neg + 1); //decay beat as bar progresses
+		});
+
+		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset: floorOffset);
+	}
+	//TODO: this doesn't work well at the moment. might be too difficult for me :(
+	//fix: add custom duration of each beatGroup (also recursive) | fix second order recursion |
+	//add layered attack sizes
+	*fromDivArray {|divArray=#[4], beatDecay=0.1, layerDecay=0.6, floorOffset=0.0, numBeats=1|
+		var timesArray = this.prProcessArray(divArray, beatDecay, layerDecay);
+		^BeatGraph.new(1!timesArray.size, timesArray, numBeats: numBeats, floorOffset: floorOffset)
+	}
+
+	*prProcessArray {|divArray=#[4], beatDecay=0.1, layerDecay=0.6, current=#[], depth=1|
+		divArray.do({|item, idx|
+			if (item.respondsTo(\at)) {
+				current = current ++ this.prProcessArray.value(item, beatDecay, layerDecay, current);
+			} {
+				current = current ++ ((1/item)!item)
+			};
+		});
+		^current.normalizeSum;
+	}
+
+	*getNumLayers {|numDivs=9, divSize=3| //use this until I find out a way to get a log3
+		var currentNum = 0;
+		while {numDivs > 1} {
+			numDivs = numDivs/divSize;
+			currentNum = currentNum + 1;
+		}
+		^currentNum;
 	}
 
 	plot {|...args|
@@ -47,6 +107,10 @@ BeatGraph {
 
 	at {|idx=0.0|
 		^this.env.at(idx);
+	}
+
+	levels {
+		^this.env.levels;
 	}
 
 	asRoutine {
@@ -91,12 +155,12 @@ BeatGraph {
 		^revSorted[(0..numAttacks-1)]
 	}
 
-	asDeltaArray {|numDeltas=4, variance=0|
+	asDeltaArray {|numDeltas=4, variance=0, tempoFactor=1|
 		var attackPairs = this.getBiggestAttackPair((numDeltas+variance).max(2));
 		var chosenIndexes = attackPairs.scramble[(0..numDeltas.max(2)-1)].sort({|a, b| a[0] < b[0]});
 		^chosenIndexes.collect({|item, idx|
 			(chosenIndexes.wrapAt(idx+1)[0] - item[0]) % numBeats
-		})
+		}) * tempoFactor;
 	}
 
 
@@ -114,3 +178,4 @@ NormTrig {
 
 
 }
+
