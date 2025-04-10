@@ -1,4 +1,4 @@
-BeatGraph {
+ThyBeatGraph {
 	var <>env, <>numBeats, <>attackIndexes;
 
 	*new { |attacks = #[1.0], times = #[1.0], curve = #[-4, 4], numBeats=4, floorLevel=0.0, floorOffset=0.0|
@@ -34,7 +34,7 @@ BeatGraph {
 			.pow(2) * ((idx/numDivs).pow(1/beatDecay).neg + 1); //decay beat as bar progresses
 		});
 
-		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
+		^ThyBeatGraph .new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
 	}
 
 	*simpleN {|numDivs=3, numLayers=3, beatDecay=0.1, numBeats=3, floorOffset = 0.0|
@@ -50,7 +50,7 @@ BeatGraph {
 			.pow(2) * ((idx/numDivs).pow(1/beatDecay.pow(2)).neg + 1); //decay beat as bar progresses
 		})!numBeats;
 		arr = arr.flatten;
-		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
+		^ThyBeatGraph .new(arr, [1], numBeats: numBeats, floorOffset:floorOffset);
 	}
 
 	*cascade3 {|numDivs=9, numLayers=(-1), beatDecay=0.1, numBeats=3, floorOffset = 0.0| //beat graph of cascading ternary measure
@@ -66,14 +66,14 @@ BeatGraph {
 			.pow(1.5) * ((idx/numDivs).pow(1/beatDecay).neg + 1); //decay beat as bar progresses
 		});
 
-		^BeatGraph.new(arr, [1], numBeats: numBeats, floorOffset: floorOffset);
+		^ThyBeatGraph .new(arr, [1], numBeats: numBeats, floorOffset: floorOffset);
 	}
 	//TODO: this doesn't work well at the moment. might be too difficult for me :(
 	//fix: add custom duration of each beatGroup (also recursive) | fix second order recursion |
 	//add layered attack sizes
 	*fromDivArray {|divArray=#[4], beatDecay=0.1, layerDecay=0.6, floorOffset=0.0, numBeats=1|
 		var timesArray = this.prProcessArray(divArray, beatDecay, layerDecay);
-		^BeatGraph.new(1!timesArray.size, timesArray, numBeats: numBeats, floorOffset: floorOffset)
+		^ThyBeatGraph .new(1!timesArray.size, timesArray, numBeats: numBeats, floorOffset: floorOffset)
 	}
 
 	*prProcessArray {|divArray=#[4], beatDecay=0.1, layerDecay=0.6, current=#[], depth=1|
