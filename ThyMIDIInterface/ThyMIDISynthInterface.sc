@@ -1,16 +1,20 @@
 //Classes to speed up working with midi keyboards/controllers
+/*
+
+
+*/
 
 ThyMIDISynth {
-	classvar <>synthList, <defaultSynthArgsFunc;
-	var <>name, <>chan, <>synthGroup, <>synthOutBus, <>defaultAddAction, <kArgsDict, <statArgsDict, notesArray;
+	classvar <synthList, <defaultSynthArgsFunc;
+	var <>name, <>chan, <>synthGroup, <>synthOutBus, <>defaultAddAction, <argsDict, <statArgsDict, notesArray;
 
 	*new {|name=\defaultSynthName, chan=0, group, outBus, addAction=\addToHead|
 		var obj = super.new;
 		obj.name = name.asSymbol;
 		obj.chan = chan;
 		obj.synthGroup = if (group.isKindOf(Group)) {group} {Group.new};
-		obj.synthOutBus = if (outBus.isKindOf(Bus)) {outBus} {Bus.audio};
-		obj.setkArgsDict(IdentityDictionary.new(16));
+		obj.synthOutBus = if (outBus.isKindOf(Bus) || outBus.isKindOf(Number)) {outBus} {0};
+		obj.setArgsDict(IdentityDictionary.new(16));
 		obj.setNotesArray(Array.newClear(128));
 		obj.setStatArgsDict(IdentityDictionary.new(8));
 		obj.defaultAddAction = addAction;
@@ -25,12 +29,16 @@ ThyMIDISynth {
 		};
 	}
 
+	*all {
+		^synthList;
+	}
+
 	*clear { //clears all MIDISynth objects from the class interface. This *doesn't* mean the objects are deleted!
 		synthList.clear;
 	}
 
-	setkArgsDict {|dict|
-		if (dict.isKindOf(Dictionary)) {kArgsDict = dict} {Error("Object % is not a kind of Dictionary".format(dict)).throw}
+	setArgsDict {|dict|
+		if (dict.isKindOf(Dictionary)) {argsDict = dict} {Error("Object % is not a kind of Dictionary".format(dict)).throw}
 	}
 
 	setStatArgsDict {|dict|
@@ -44,17 +52,17 @@ ThyMIDISynth {
 	setNoteOn {|synthDef=\default, argsFunc, server=(Server.default)|
 		argsFunc = argsFunc ? ThyMIDISynth.defaultSynthArgsFunc;
 		MIDIdef.noteOn(name++\On, {|vel, note_num, chan, src|
-			var args = argsFunc.value(vel, note_num, chan, src) ++ kArgsDict.asKeyValuePairs ++ [out: synthOutBus] ++ statArgsDict.asKeyValuePairs;
+			var args = argsFunc.value(vel, note_num, chan, src) ++ argsDict.asKeyValuePairs ++ [out: synthOutBus] ++ statArgsDict.asKeyValuePairs;
 			var prev = notesArray[note_num];
-			var newNode = Synth(synthDef, args, synthGroup, defaultAddAction);
-			notesArray[note_num] = newNode;
-			//if (prev.isRunning) {prev.release};
+			notesArray[note_num] = Synth(synthDef, args, synthGroup, defaultAddAction);
+			if (prev.isNil.not) {prev.release};
 		}, chan: chan);
 	}
 
 	setNoteOff {|argsFunc, server=(Server.default)|
 		MIDIdef.noteOff(name++\Off, {|vel, note_num, chan, src|
 			notesArray[note_num].release;
+			notesArray[note_num] = nil;
 		}, chan: chan);
 	}
 
@@ -63,16 +71,16 @@ ThyMIDISynth {
 		this.setNoteOff(argsFunc, server);
 	}
 
-	plugControl {|ccNum=0, modName, valFunc, dynamic=true, startVal=1, cChannel| //if dynamic, then already played notes will change as well
+	plugControl {|ccNum=0, modName, valFunc, dynamic=true, startVal=1, ccChan| //if dynamic, then already played notes will change as well
 		modName = (modName ? (\mod ++ ccNum.asSymbol)).asSymbol;
 		valFunc = valFunc ? {|val| val};
-		cChannel = cChannel ? chan;
-		kArgsDict.add(modName -> startVal);
+		ccChan = ccChan ? chan;
+		argsDict.add(modName -> startVal);
 		MIDIdef.cc(name ++ \_ ++ modName.asSymbol, {|val, num, chan, src|
 			val = valFunc.value(val);
 			if (dynamic) {synthGroup.set(modName, val)};
-			kArgsDict.add(modName -> val.copy);
-		}, ccNum: ccNum, chan: cChannel);
+			argsDict.add(modName -> val.copy);
+		}, ccNum: ccNum, chan: ccChan);
 
 	}
 
@@ -101,7 +109,7 @@ ThyMIDILatchSynth : ThyMIDISynth {
 			if (currentIdx.isNil.not) {
 				notesArray[currentNotes.removeAt(currentIdx)].release;
 			} {
-				args = argsFunc.value(vel, note_num, chan, src) ++ kArgsDict.asKeyValuePairs ++ [out: synthOutBus];
+				args = argsFunc.value(vel, note_num, chan, src) ++ argsDict.asKeyValuePairs ++ [out: synthOutBus];
 				notesArray[note_num] = Synth(synthDef, args, synthGroup, defaultAddAction);
 				currentNotes.add(note_num);
 			};

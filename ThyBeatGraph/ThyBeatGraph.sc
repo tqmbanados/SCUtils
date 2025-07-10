@@ -113,6 +113,10 @@ ThyBeatGraph {
 		^this.env.levels;
 	}
 
+	numDivs {
+		^(this.levels.size / 2).floor;
+	}
+
 	asRoutine {
 		^Routine({
 			var env = this.env.copy;
@@ -130,7 +134,7 @@ ThyBeatGraph {
 		func = if (func.isKindOf(Function)) {func} {{
 			//Function that should work for two possible use cases, an incoming Pbind Event, or a Number
 			|event|
-			{event.at(\delta)}.try(event)
+			{event.atAll([\delta, \dur]).select({|item| item.isNil.not})[0]}.try(event)
 		}};
 		^Prout({
 			var env = this.env.copy;
@@ -156,8 +160,10 @@ ThyBeatGraph {
 	}
 
 	asDeltaArray {|numDeltas=4, variance=0, tempoFactor=1|
-		var attackPairs = this.getBiggestAttackPair((numDeltas+variance).max(2));
-		var chosenIndexes = attackPairs.scramble[(0..numDeltas.max(2)-1)].sort({|a, b| a[0] < b[0]});
+		var attackPairs, chosenIndexes;
+		variance = variance.min(this.numDivs-(numDeltas+1)).max(0);
+		attackPairs = this.getBiggestAttackPair((numDeltas+variance).max(2));
+		chosenIndexes = attackPairs.scramble[(0..numDeltas.max(2)-1)].sort({|a, b| a[0] < b[0]});
 		^chosenIndexes.collect({|item, idx|
 			(chosenIndexes.wrapAt(idx+1)[0] - item[0]) % numBeats
 		}) * tempoFactor;
