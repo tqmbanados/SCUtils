@@ -30,7 +30,7 @@ ThyDewController {
 		dewList.clear;
 	}
 
-	*getAccelFunc {|evalsPerSec = 25, obj, argsDict|
+	*getAccelFunc {|evalsPerSec = 25, obj|
 		^{
 			var loopNumber = 0;
 			loop{
@@ -55,10 +55,10 @@ ThyDewController {
 		tempoRange = [0.01, maxTempo];
 		tempoLimit = maxTempo;
 		argsDict = IdentityDictionary.newFrom([
-			\currentQ, 1.0,
-			\currentAmp, 1.0,
-			\harmonicity, 1.0,
-			\freqVar, 0.0
+			\arg1, 1.0, //currentQ
+			\arg2, 1.0, //currentAmp
+			\arg3, 1.0, //harmonicity
+			\arg4, 0.0  //freqVar
 		]).merge(startArgs, {|default, starting| starting});
 		argsDict.know = true;
 
@@ -66,20 +66,61 @@ ThyDewController {
 		clock = TempoClock(startTempo);
 		accelerator = Task(ThyDewController.getAccelFunc(25, this, argsDict));
 		this.evalPDef();
-		"DewChain with the following ArgsDict initialized: \n%".format(this.argsDict).postln;
-
 	}
 
 	type {
 		^\mel;
 	}
 
+	//interfacing with Args Dict:
+	changeVal {|key, val|
+		{
+			semaphore.wait;
+			argsDict[key] = val;
+			semaphore.signal;
+		}.fork;
+		this.evalPDef;
+	}
+
+	currentQ {
+		^argsDict[\arg1];
+	}
+
+	currentQ_ {|val|
+		this.changeVal(\arg1, val);
+	}
+
+	currentAmp {
+		^argsDict[\arg2];
+	}
+
+	currentAmp_ {|val|
+		this.changeVal(\arg2, val);
+	}
+
+	harmonicity {
+		^argsDict[\arg3];
+	}
+
+	harmonicity_ {|val|
+		this.changeVal(\arg3, val);
+	}
+
+
+	freqVar {
+		^argsDict[\arg4];
+	}
+
+	freqVar_ {|val|
+		this.changeVal(\arg4, val);
+	}
+
 	mappedArgsDict {
 		^[
-			argsDict.currentQ.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
-			argsDict.currentAmp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
-			(argsDict.harmonicity*pi).cos.abs,
-			argsDict.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
+			this.currentQ.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
+			this.currentAmp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
+			(this.harmonicity*pi).cos.abs,
+			this.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
 		]
 	}
 
@@ -89,7 +130,7 @@ ThyDewController {
 
 	evalPDef {
 		if (reEvalPDef == 0) {{
-			var freqVar = 1 + argsDict.freqVar.pow(2);
+			var freqVar = 1 + this.freqVar.pow(2);
 			reEvalPDef = 1;
 			semaphore.wait;
 			Pdef(this.name,
@@ -97,26 +138,17 @@ ThyDewController {
 					\instrument, this.instrument,
 					\freq, (Pget(\melody, default: 1, repeats: inf)
 						* this.baseFreq
-						* freqVar.pow(Pgauss(0, 0.03))),
-					\harmonicity, argsDict.harmonicity,
+						* this.freqVar.pow(Pgauss(0, 0.03))),
+					\harmonicity, this.harmonicity,
 					\delta, 1,
-					\amp,  this.tempo.reciprocal.sqrt * this.argsDict.currentAmp,
-					\ring, this.argsDict.currentQ,
+					\amp,  this.tempo.reciprocal.sqrt * this.currentAmp,
+					\ring, this.currentQ,
 					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5)
 				)
 			);
 			semaphore.signal;
 			reEvalPDef = 0;
 		}.fork};
-	}
-
-	changeVal {|key, val|
-		{
-			semaphore.wait;
-			argsDict[key] = val;
-			semaphore.signal;
-		}.fork;
-		this.evalPDef;
 	}
 
 	tempo {

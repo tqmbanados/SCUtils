@@ -105,7 +105,7 @@ ThyDewGUI {
 
 			tempoView.string = controller.tempo.asStringPrec(4);
 			if (showTarget) {
-				var speed = ThyDewController.accelBaseCoef.pow(controller.argsDict.accel);
+				var speed = ThyDewController.accelBaseCoef.pow(controller.accel);
 				var estTime = 0;
 				speedView.string = speed.asStringPrec(4);
 				targetTempoView.string = controller.tempoLimit.asFloat.asStringPrec(4);
@@ -114,7 +114,7 @@ ThyDewGUI {
 				};
 				estTimeView.string = estTime.asFloat.asStringPrec(4);
 			} {
-				speedView.string = ThyDewController.accelBaseCoef.pow(controller.argsDict.accel);
+				speedView.string = ThyDewController.accelBaseCoef.pow(controller.accel);
 				targetTempoView = "";
 				estTimeView.string = "";
 			};
