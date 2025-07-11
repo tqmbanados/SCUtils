@@ -1,15 +1,8 @@
 //Class that facilitates controlling Dew droplet chains
-/*
-- Pdef
-- modulateable params
-- starting args
-- clock
-
-*/
 
 ThyDewController {
-	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio;
-	var <>index, <>baseFreq, <name, <clock, <stream, <argsDict, <instrument, <tempoRange, <tempoLimit, semaphore, reEvalPDef, melody, melodyPattern, accelerator;
+	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio, <accelBaseCoef;
+	var <>index, <>baseFreq, <>accel, <name, <clock, <stream, <argsDict, <instrument, <tempoRange, <tempoLimit, semaphore, reEvalPDef, melody, melodyPattern, accelerator;
 
 	*new {|index=0, baseFreq=220.0, instrument=\default, startTempo=1, melody, startArgs|
 		var obj = super.new;
@@ -25,6 +18,7 @@ ThyDewController {
 		maxTempo = 2000.0;
 		baseMelody = [1, 6/5, 7/4, 9/4, 3/2, 1, 6/5, 7/4, 9/4, 3/2, 27/16];
 		baseArpeggio = [1, 6/5, 7/2, 9/4];
+		accelBaseCoef = 2.0//1.62;
 	}
 
 	*all {
@@ -40,7 +34,7 @@ ThyDewController {
 		^{
 			var loopNumber = 0;
 			loop{
-				//tempo changes by phi when accel is 1, 1/phi when accel is -1
+				//tempo changes by 2 when accel is 1, 0.5 when accel is -1
 				obj.prAccelTempo(evalsPerSec);
 				evalsPerSec.reciprocal.wait;
 				if (loopNumber >= 10) {obj.evalPDef; loopNumber=0} {loopNumber = loopNumber + 1}
@@ -53,16 +47,16 @@ ThyDewController {
 		name = (\dew ++ \_ ++ newInstrument ++ \_ ++ newIndex).asSymbol;
 		index = newIndex;
 		baseFreq = newFreq;
+		accel = 0.0;
 		instrument = newInstrument;
 		semaphore = Semaphore(1);
 		reEvalPDef = 0; //we don't want to reeval the pdef to many times :3
 		melody = newMelody;
-		tempoRange = [0, maxTempo];
+		tempoRange = [0.01, maxTempo];
 		tempoLimit = maxTempo;
 		argsDict = IdentityDictionary.newFrom([
 			\currentQ, 1.0,
 			\currentAmp, 1.0,
-			\accel, 0.0,
 			\harmonicity, 1.0,
 			\freqVar, 0.0
 		]).merge(startArgs, {|default, starting| starting});
@@ -80,8 +74,17 @@ ThyDewController {
 		^\mel;
 	}
 
+	mappedArgsDict {
+		^[
+			argsDict.currentQ.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
+			argsDict.currentAmp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
+			(argsDict.harmonicity*pi).cos.abs,
+			argsDict.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
+		]
+	}
+
 	prAccelTempo {|evalsPerSec|
-		this.tempo = this.tempo * 1.62.pow(argsDict.accel/evalsPerSec);
+		this.tempo = this.tempo * accelBaseCoef.pow(accel/evalsPerSec);
 	}
 
 	evalPDef {
@@ -122,15 +125,15 @@ ThyDewController {
 
 	tempo_ {|newTempo|
 		clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
-		if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {argsDict[\accel] = 0};
+		if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {accel = 0};
 	}
 
 	accelTo {|target, time, limitAtTarget=true|
 		//target tempo, time in seconds. if limit at target is true, tempo will stop accel at target
 		//changes current accel value according to the input
-		this.argsDict[\accel] = (target/this.tempo).log/(time * 1.62.log);
+		this.accel = (target/this.tempo).log2/(time * accelBaseCoef.log2);
 		if (limitAtTarget) {tempoLimit = target};
-		^this.argsDict.accel;
+		^this.accel;
 
 	}
 

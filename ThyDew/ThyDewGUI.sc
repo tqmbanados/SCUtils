@@ -105,7 +105,7 @@ ThyDewGUI {
 
 			tempoView.string = controller.tempo.asStringPrec(4);
 			if (showTarget) {
-				var speed = 1.62.pow(controller.argsDict.accel);
+				var speed = ThyDewController.accelBaseCoef.pow(controller.argsDict.accel);
 				var estTime = 0;
 				speedView.string = speed.asStringPrec(4);
 				targetTempoView.string = controller.tempoLimit.asFloat.asStringPrec(4);
@@ -114,25 +114,16 @@ ThyDewGUI {
 				};
 				estTimeView.string = estTime.asFloat.asStringPrec(4);
 			} {
-				speedView.string = 1.62.pow(controller.argsDict.accel);
+				speedView.string = ThyDewController.accelBaseCoef.pow(controller.argsDict.accel);
 				targetTempoView = "";
 				estTimeView.string = "";
 			};
 
-			argsDictSliders.value = this.mapArgsDict(controller.argsDict);
+			argsDictSliders.value = controller.mappedArgsDict;
 		}} {defer{
 			colourView.background = Color.gray(0.96);
 			view.background = Color.gray(0.96);
 		}}
-	}
-
-	mapArgsDict {|argsDict|
-		^[
-			argsDict.currentQ.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
-			argsDict.currentAmp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
-			(argsDict.harmonicity*pi).cos.abs,
-			argsDict.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
-		]
 	}
 
 	stopUpdateStream {
