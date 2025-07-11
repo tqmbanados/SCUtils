@@ -134,6 +134,14 @@ ThyDewController {
 
 	}
 
+	isPlaying {
+		if (stream.notNil) {
+			^stream.isPlaying;
+		} {
+			^false;
+		}
+	}
+
 	start {
 		stream = Plambda(
 			Ppar([melodyPattern, Pdef(name)], inf)
