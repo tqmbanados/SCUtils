@@ -27,9 +27,9 @@ ThyParamManager {
 		this.defaultLag = newDefaultLag;
 		this.maxCloseness = newMaxCloseness;
 		semaphore = Semaphore(1);
-		params = IdentityDictionary.new(128); //params associated with their values
-		changeData = IdentityDictionary.new(128); //data for params that are being changed
-		paramData = IdentityDictionary.new(128);
+		params = IdentityDictionary.new(1024); //params associated with their values
+		changeData = IdentityDictionary.new(1024); //data for params that are being changed
+		paramData = IdentityDictionary.new(1024);
 		//data is stored as: [target to change to, accel, sign, alter, changeType]
 		runTask = Task(this.runFunc);
 		runTask.play;

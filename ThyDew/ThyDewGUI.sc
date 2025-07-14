@@ -25,52 +25,54 @@ ThyDewGUI {
 
 	initView {|parent, bounds, polimorphicStatus|
 		var baseInfoGrid, tempoValV, tempoInfoH, tempoInfoV;
-		view = View(parent, bounds).font_(fontMain);
 		polimorphic = polimorphicStatus;
 		showTarget = true;
 		selected = false;
 		updateStream = Task({loop{this.updateView; 10.reciprocal.wait}});
 
 		//BuildView
-		indexView = StaticText(view).string_("index").font_(fontBold);
-		instrumentView = StaticText(view).string_("instr");
-		typeView = StaticText(view).string_("type");
-		baseFreqView = StaticText(view).string_("baseFreq");
-		baseInfoGrid = GridLayout.rows(
-			[[indexView,      a:\left],   25, nil, 25, [typeView, a:\left]],
-			[[instrumentView, a:\left], 25, nil, 25, [baseFreqView, a:\left]]
-		);
+		{
+			view = View(parent, bounds).font_(fontMain);
+			indexView = StaticText(view).string_("index").font_(fontBold);
+			instrumentView = StaticText(view).string_("instr");
+			typeView = StaticText(view).string_("type");
+			baseFreqView = StaticText(view).string_("baseFreq");
+			baseInfoGrid = GridLayout.rows(
+				[[indexView,      a:\left],   25, nil, 25, [typeView, a:\left]],
+				[[instrumentView, a:\left], 25, nil, 25, [baseFreqView, a:\left]]
+			);
 
-		tempoView = StaticText(view).string_("2000").font_(fontLarge);
-		speedView = StaticText(view).string_("speed");
-		targetTempoView = StaticText(view).string_("target");
-		estTimeView = StaticText(view).string_("est.");
-		tempoInfoV = VLayout(speedView, targetTempoView, estTimeView);
-		tempoInfoH = HLayout([tempoView, a:\center], tempoInfoV);
+			tempoView = StaticText(view).string_("2000").font_(fontLarge);
+			speedView = StaticText(view).string_("speed");
+			targetTempoView = StaticText(view).string_("target");
+			estTimeView = StaticText(view).string_("est.");
+			tempoInfoV = VLayout(speedView, targetTempoView, estTimeView);
+			tempoInfoH = HLayout([tempoView, a:\center], tempoInfoV);
 
-		argsDictSliders = MultiSliderView(view).elasticMode_(1).isFilled_(true).editable_(false);
-		argsDictSliders.indexIsHorizontal_(false);
+			argsDictSliders = MultiSliderView(view).elasticMode_(1).isFilled_(true).editable_(false);
+			argsDictSliders.indexIsHorizontal_(false);
 
-		colourView = View(view, 100@100);
-		stopButton = Button(colourView).states_([["ON"], ["OFF"]]).action_({this.stopController});
-		colourView.layout = VLayout([nil, s:1], [stopButton, s:1], [nil, s:1]);
+			colourView = View(view, 100@100);
+			stopButton = Button(colourView).states_([["ON"], ["OFF"]]).action_({this.stopController});
+			colourView.layout = VLayout([nil, s:1], [stopButton, s:1], [nil, s:1]);
 
-		view.layout = HLayout(
-			[baseInfoGrid, a:\left, s:1],
-			nil,
-			[tempoInfoH, a:\center, s:1.5],
-			nil,
-			[argsDictSliders, s:3],
-			nil,
-			[colourView, s:1],
-			nil,
-		);
+			view.layout = HLayout(
+				[baseInfoGrid, a:\left, s:1],
+				nil,
+				[tempoInfoH, a:\center, s:1.5],
+				nil,
+				[argsDictSliders, s:3],
+				nil,
+				[colourView, s:1],
+				nil,
+			);
+			view.maxHeight_(100);
+		}.defer
 	}
 
 	pairController {|newController|
 		if(newController.isKindOf(ThyDewController)) {
 			controller = newController;
-			view.name = controller.name;
 			this.updateView;
 			updateStream.start;
 		} {
@@ -81,6 +83,7 @@ ThyDewGUI {
 
 	updateView {
 		if (controller.isNil.not) {defer{
+			view.name = controller.name;
 			if (controller.isPlaying) {
 				var green, interp, red, warnInterp, warningRed;
 				green = Color.new255(26, 181, 32, 245);

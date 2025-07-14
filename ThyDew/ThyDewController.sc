@@ -30,9 +30,12 @@ ThyDewController {
 		^dewList;
 	}
 
-	*clear { //clears and stops all DewController objects from the class interface. This *doesn't* mean the objects are deleted!
+	*stopAll { //stops all DewController objects from the class interface. This *doesn't* mean the objects are deleted!
 		dewList.do(_.stop);
-		dewList.clear;
+	}
+
+	*removeReference {|name|
+		dewList[name] = nil;
 	}
 
 	*getAccelFunc {|evalsPerSec = 25, obj|
