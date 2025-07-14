@@ -171,12 +171,15 @@ ThyParamManager {
 	}
 
 	getChangeData {|param|
-		^changeData[param];
+		^changeData[param].copy;
 	}
 
 	getParamData {|param|
-		^paramData[param];
+		^paramData[param].copy;
 	}
 
+	allParams {
+		^params.copy;
+	}
 
 }
