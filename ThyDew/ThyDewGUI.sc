@@ -13,7 +13,7 @@ ThyDewGUI {
 
 	*new {|parent, bounds, polimorphic=false|
 		var obj = super.new;
-		bounds = if(bounds.notNil) {bounds} {900@100};
+		bounds = if(bounds.notNil) {bounds} {900@85};
 		^obj.initView(parent, bounds, polimorphic);
 	}
 
@@ -49,7 +49,7 @@ ThyDewGUI {
 		tempoInfoH = HLayout([tempoView, a:\center], tempoInfoV);
 
 		argsDictSliders = MultiSliderView(view).elasticMode_(1).isFilled_(true).editable_(false);
-		argsDictSliders.indexIsHorizontal_(false).size_(4);
+		argsDictSliders.indexIsHorizontal_(false);
 
 		colourView = View(view, 100@100);
 		stopButton = Button(colourView).states_([["ON"], ["OFF"]]).action_({this.stopController});
@@ -77,6 +77,7 @@ ThyDewGUI {
 			"object % is not a valid Dew Controller".format(newController).warn;
 		}
 	}
+
 
 	updateView {
 		if (controller.isNil.not) {defer{
@@ -119,15 +120,23 @@ ThyDewGUI {
 				estTimeView.string = "";
 			};
 
-			argsDictSliders.value = controller.mappedArgsDict;
+			argsDictSliders.value = controller.mappedArgs;
 		}} {defer{
 			colourView.background = Color.gray(0.96);
 			view.background = Color.gray(0.96);
 		}}
 	}
 
-	stopUpdateStream {
+	pauseUpdateStream {
 		//if we wanna manually update
+		updateStream.pause;
+	}
+
+	resumeUpdateStream {
+		updateStream.resume;
+	}
+
+	stopUpdateStream {
 		updateStream.stop;
 	}
 
@@ -179,6 +188,14 @@ ThyDewGUI {
 
 	front {
 		^view.front;
+	}
+
+	alwaysOnTop {
+		^view.alwaysOnTop;
+	}
+
+	alwaysOnTop_ {|val|
+		^view.alwaysOnTop_(val);
 	}
 
 	doesNotUnderstand { arg selector ... args;

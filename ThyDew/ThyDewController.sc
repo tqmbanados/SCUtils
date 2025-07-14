@@ -1,15 +1,20 @@
 //Class that facilitates controlling Dew droplet chains
 
+/*
+TODO: separate in three classes:
+ThyDewController: Abstract Class
+ThyDewMelodicController: melodic Droplet control
+ThyDewRhythmicController: rhythmic droplet control :3
+the difference between them is mostly in the PDef section
+*/
+
 ThyDewController {
 	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio, <accelBaseCoef;
-	var <>index, <>baseFreq, <>accel, <name, <clock, <stream, <argsDict, <instrument, <tempoRange, <tempoLimit, semaphore, reEvalPDef, melody, melodyPattern, accelerator;
+	var <>index, <>baseFreq, <>accel, <name, <clock, <stream, argsDict, <instrument, <tempoRange, <tempoLimit, semaphore, reEvalPDef, accelerator;
 
-	*new {|index=0, baseFreq=220.0, instrument=\default, startTempo=1, melody, startArgs|
+	*new {|name|
 		var obj = super.new;
-		melody = if (melody.isKindOf(SequenceableCollection)) {melody} {baseMelody};
-		startArgs = if (startArgs.isKindOf(IdentityDictionary)) {startArgs} {IdentityDictionary.new};
-		obj.initDew(index, baseFreq, instrument, startTempo, melody, startArgs);
-		this.dewList.add(obj.name -> obj);
+		this.dewList.add(name -> obj);
 		^obj;
 	}
 
@@ -43,36 +48,22 @@ ThyDewController {
 
 	}
 
-	initDew {|newIndex, newFreq, newInstrument, startTempo, newMelody, startArgs|
-		name = (\dew ++ \_ ++ newInstrument ++ \_ ++ newIndex).asSymbol;
+	initDew {|newName, newIndex, newFreq, newInstrument, startTempo|
+		name = newName.asSymbol;
 		index = newIndex;
 		baseFreq = newFreq;
 		accel = 0.0;
 		instrument = newInstrument;
 		semaphore = Semaphore(1);
 		reEvalPDef = 0; //we don't want to reeval the pdef to many times :3
-		melody = newMelody;
 		tempoRange = [0.01, maxTempo];
 		tempoLimit = maxTempo;
-		argsDict = IdentityDictionary.newFrom([
-			\arg1, 1.0, //currentQ
-			\arg2, 1.0, //currentAmp
-			\arg3, 1.0, //harmonicity
-			\arg4, 0.0  //freqVar
-		]).merge(startArgs, {|default, starting| starting});
-		argsDict.know = true;
-
-		melodyPattern = Plet(\melody, Pseq(melody, inf), 1);
 		clock = TempoClock(startTempo);
-		accelerator = Task(ThyDewController.getAccelFunc(25, this, argsDict));
-		this.evalPDef();
+		accelerator = Task(ThyDewController.getAccelFunc(25, this));
+		this.evalPDef;
 	}
 
-	type {
-		^\mel;
-	}
-
-	//interfacing with Args Dict:
+	//interfacing with Args:
 	changeVal {|key, val|
 		{
 			semaphore.wait;
@@ -82,73 +73,18 @@ ThyDewController {
 		this.evalPDef;
 	}
 
-	currentQ {
-		^argsDict[\arg1];
+	mappedArgs {
+		//This method should return a list of Dew Args mapped to (0, 1)
+		^this.subclassResponsibility(thisMethod);
 	}
 
-	currentQ_ {|val|
-		this.changeVal(\arg1, val);
-	}
-
-	currentAmp {
-		^argsDict[\arg2];
-	}
-
-	currentAmp_ {|val|
-		this.changeVal(\arg2, val);
-	}
-
-	harmonicity {
-		^argsDict[\arg3];
-	}
-
-	harmonicity_ {|val|
-		this.changeVal(\arg3, val);
-	}
-
-
-	freqVar {
-		^argsDict[\arg4];
-	}
-
-	freqVar_ {|val|
-		this.changeVal(\arg4, val);
-	}
-
-	mappedArgsDict {
-		^[
-			this.currentQ.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
-			this.currentAmp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
-			(this.harmonicity*pi).cos.abs,
-			this.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
-		]
+	evalPDef {
+		//evaluate the running Pdef
+		^this.subclassResponsibility(thisMethod);
 	}
 
 	prAccelTempo {|evalsPerSec|
 		this.tempo = this.tempo * accelBaseCoef.pow(accel/evalsPerSec);
-	}
-
-	evalPDef {
-		if (reEvalPDef == 0) {{
-			var freqVar = 1 + this.freqVar.pow(2);
-			reEvalPDef = 1;
-			semaphore.wait;
-			Pdef(this.name,
-				Pbind(
-					\instrument, this.instrument,
-					\freq, (Pget(\melody, default: 1, repeats: inf)
-						* this.baseFreq
-						* this.freqVar.pow(Pgauss(0, 0.03))),
-					\harmonicity, this.harmonicity,
-					\delta, 1,
-					\amp,  this.tempo.reciprocal.sqrt * this.currentAmp,
-					\ring, this.currentQ,
-					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5)
-				)
-			);
-			semaphore.signal;
-			reEvalPDef = 0;
-		}.fork};
 	}
 
 	tempo {
@@ -178,9 +114,7 @@ ThyDewController {
 	}
 
 	start {
-		stream = Plambda(
-			Ppar([melodyPattern, Pdef(name)], inf)
-		).play(clock, quant:1);
+		stream = Pdef[\name].play(clock, quant:1);
 		accelerator.start;
 		^stream
 	}
@@ -200,6 +134,113 @@ ThyDewController {
 		accelerator.resume;
 		^stream.resume;
 	}
+
+}
+
+
+ThyDewMelodic : ThyDewController {
+	var melody, melodyPattern;
+
+	*new {|index=0, baseFreq=220.0, instrument=\default, startTempo=1, melody, startArgs|
+		var name = \dew ++ \_ ++ instrument ++ \_ ++ index;
+		var obj = super.new(name);
+		melody = if (melody.isKindOf(SequenceableCollection)) {melody} {baseMelody};
+		startArgs = if (startArgs.isKindOf(IdentityDictionary)) {startArgs} {IdentityDictionary.new};
+		obj.initDew(name, index, baseFreq, instrument, startTempo, melody, startArgs);
+		^obj;
+	}
+
+	initDew {|newName, newIndex, newFreq, newInstrument, startTempo, newMelody, startArgs|
+		melody = newMelody;
+		melodyPattern = Plet(\melody, Pseq(melody, inf), 1);
+		argsDict = IdentityDictionary.newFrom([
+			\ringTime, startArgs[\ringTime] ? 1.0, //ringTime
+			\amp, startArgs[\amp] ? 1.0, //amp
+			\harmonicity, startArgs[\harmonicity] ? 1.0, //harmonicity
+			\freqVar, startArgs[\freqVar] ? 0.0  //freqVar
+		]);
+		argsDict.know = true;
+		^super.initDew(newName, newIndex, newFreq, newInstrument, startTempo);
+	}
+
+	evalPDef {
+		if (reEvalPDef == 0) {{
+			var remapFreqVar = 1 + this.freqVar.pow(2);
+			reEvalPDef = 1;
+			semaphore.wait;
+			Pdef(this.name,
+				Pbind(
+					\instrument, this.instrument,
+					\freq, (Pget(\melody, default: 1, repeats: inf)
+						* this.baseFreq
+						* remapFreqVar.pow(Pgauss(0, 0.03))),
+					\harmonicity, this.harmonicity,
+					\delta, 1,
+					\amp,  this.tempo.reciprocal.sqrt * this.amp,
+					\ring, this.ringTime,
+					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5)
+				)
+			);
+			semaphore.signal;
+			reEvalPDef = 0;
+		}.fork};
+	}
+
+	type {
+		^\mel;
+	}
+
+	start {
+		stream = Plambda(
+			Ppar([melodyPattern, Pdef(name)], inf)
+		).play(clock, quant:1);
+		accelerator.start;
+		^stream
+	}
+
+	//ArgsDict interfacing
+	ringTime {
+		^argsDict[\ringTime];
+	}
+
+	ringTime_ {|val|
+		this.changeVal(\ringTime, val);
+	}
+
+	amp {
+		^argsDict[\amp];
+	}
+
+	amp_ {|val|
+		this.changeVal(\amp, val);
+	}
+
+	harmonicity {
+		^argsDict[\harmonicity];
+	}
+
+	harmonicity_ {|val|
+		this.changeVal(\harmonicity, val);
+	}
+
+
+	freqVar {
+		^argsDict[\freqVar];
+	}
+
+	freqVar_ {|val|
+		this.changeVal(\freqVar, val);
+	}
+
+	mappedArgs {
+		^[
+			this.ringTime.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
+			this.amp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
+			(this.harmonicity*pi).cos.abs,
+			this.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
+		]
+	}
+
 
 }
 
