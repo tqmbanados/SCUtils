@@ -14,9 +14,9 @@ ThyDewRhythmicController: rhythmic droplet control :3
 
 ThyDewController {
 	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio, <accelBaseCoef;
-	var <>index, <>baseFreq, <>accelMod=0.0, <>deltaFactor=1.0;
+	var <>index, <>baseFreq, <>accelMod=0.0, <>deltaFactor=1.0, <>server;
 	var <accel, <name, <clock, <stream, <instrument, <busIndices, <group, <tempoRange, <tempoLimit;
-	var semaphore, reEvalPDef, accelerator, defaultMsg, argsDict, argsMsgMap;
+	var semaphore, reEvalPdefn, accelerator, defaultMsg, argsDict, argsMsgMap, busStream;
 
 	*new {|name|
 		var obj = super.new;
@@ -46,12 +46,10 @@ ThyDewController {
 
 	*getAccelFunc {|evalsPerSec = 25, obj|
 		^{
-			var loopNumber = 0;
 			loop{
 				//tempo changes by 2 when accel is 1, 0.5 when accel is -1
 				obj.prAccelTempo(evalsPerSec);
 				evalsPerSec.reciprocal.wait;
-				if (loopNumber >= 10) {obj.evalPDef; loopNumber=0} {loopNumber = loopNumber + 1}
 			}
 		}
 
@@ -67,22 +65,21 @@ ThyDewController {
 		^[msg, argMaps]
 	}
 
-	initDew {|newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo|
+	initDew {|newName, newIndex, newFreq, newInstrument, newBus, newGroup, startTempo|
 		name = newName.asSymbol;
 		index = newIndex;
 		baseFreq = newFreq;
 		accel = 0.0;
 		accelMod = 0.0;
 		instrument = newInstrument;
-		busIndices = newBusses;
+		busIndices = (newBus.index .. newBus.index + newBus.numChannels-1);
 		group = newGroup;
 		semaphore = Semaphore(1);
-		reEvalPDef = 0; //we don't want to reeval the pdef to many times :3
+		reEvalPdefn = 0; //we don't want to reeval the Pdefn to many times :3
 		tempoRange = [0.01, maxTempo];
 		tempoLimit = maxTempo;
 		clock = TempoClock(startTempo);
-		accelerator = Task(ThyDewController.getAccelFunc(25, this));
-
+		server = Server.default;
 	}
 
 	defaultMsg {
@@ -96,7 +93,14 @@ ThyDewController {
 			argsDict[key] = val;
 			semaphore.signal;
 		}.fork;
-		this.evalPDef;
+	}
+
+	withSemaphore {|func, args|
+		{
+			semaphore.wait;
+			func.value(args);
+			semaphore.signal;
+		}.forkIfNeeded
 	}
 
 	mappedArgs {
@@ -104,8 +108,8 @@ ThyDewController {
 		^this.subclassResponsibility(thisMethod);
 	}
 
-	evalPDef {
-		//evaluate the running Pdef
+	evalPdefn {
+		//evaluate the running Pdefn
 		^this.subclassResponsibility(thisMethod);
 	}
 
@@ -118,8 +122,23 @@ ThyDewController {
 	}
 
 	tempo_ {|newTempo|
-		clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
-		if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {accel = 0};
+		if (newTempo != this.tempo) {
+			clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
+			if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {accel = 0};
+			this.withSemaphore({
+				var tempoAmpMod = this.amp * this.tempo.reciprocal.sqrt;
+				defaultMsg.put(argsMsgMap[\amp], tempoAmpMod);
+				defaultMsg.put(argsMsgMap[\duration], this.tempoAmpMod * this.duration * 1.5);
+			})
+		}
+	}
+
+	amp {
+		^this.subclassResponsibility(thisMethod);
+	}
+
+	duration {
+		^this.subclassResponsibility(thisMethod);
 	}
 
 	accelTo {|target, time, limitAtTarget=true|
@@ -141,7 +160,7 @@ ThyDewController {
 	}
 
 	start {
-		stream = Pdef[\name].play(clock, quant:1);
+		stream = Pdefn(name).play(clock);
 		accelerator.start;
 		^stream
 	}
@@ -154,18 +173,18 @@ ThyDewController {
 
 	pause {
 		accelerator.pause;
-		^stream.pause;
+		stream.pause;
 	}
 
 	resume {
 		accelerator.resume;
-		^stream.resume;
+		stream.resume;
 	}
 
 }
 
 ThyDewMelodic : ThyDewController {
-	var melody, melodyPattern;
+	var <melody, melodyStream;
 
 	*new {|index=0, baseFreq=220.0, instrument=\default, busses, group, startTempo=1, melody, startArgs|
 		var name = \dew ++ \_ ++ instrument ++ \_ ++ index;
@@ -181,87 +200,63 @@ ThyDewMelodic : ThyDewController {
 
 	initDew {|newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo, newMelody, startArgs|
 		melody = newMelody;
-		melodyPattern = Plet(\melody, Pseq(melody, inf), 1);
 		argsDict = IdentityDictionary.newFrom([
 			\ringTime, startArgs[\ringTime] ? 1.0, //ringTime
 			\dB, startArgs[\dB] ? 1.0, //dB
 			\harmonicity, startArgs[\harmonicity] ? 1.0, //harmonicity
 			\freqVar, startArgs[\freqVar] ? 0.0  //freqVar
-		]);
-		argsDict.know = true;
+		]).know_(true);
+
 		super.initDew(newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo);
-		this.initMsgStreams;
+		this.initStreams;
 	}
 
-	initMsgStreams {
+	initStreams {
 		var msgData = this.createDefaultMessage(
 			instrument,
 			Server.default,
-			group, [
-				\freq, baseFreq
-		]);
+			group,
+			[
+				freq: baseFreq,
+				outbus: busIndices.choose,
+				partialDensity: this.partialDensity,
+				amp: this.dB.dbamp,
+				ringTime: this.ringTime,
+				duration: this.dB.dbamp * this.ringTime * 1.5,
+				group: this.group
+			]
+		);
 		defaultMsg = msgData[0];
 		argsMsgMap = msgData[1];
+		accelerator = Task(ThyDewController.getAccelFunc(25, this));
+		melodyStream = Pseq(melody, inf).asStream;
+		busStream = Pseq(busIndices, inf).asStream;
+		this.evalPdefn;
 	}
 
-	evalPDef {
-		if (reEvalPDef == 0) {{
+	evalPdefn {
+		if (reEvalPdefn == 0) {{
 			var remapFreqVar = 1 + this.freqVar.pow(2);
-			var amp = this.dB.dbamp;
-			reEvalPDef = 1;
+			reEvalPdefn = 1;
 			semaphore.wait;
-			Pdef(this.name,
-				Pbind(
-					\instrument, this.instrument,
-					\freq, (Pget(\melody, default: 1, repeats: inf)
-						* this.baseFreq
-						* remapFreqVar.pow(Pgauss(0, 0.03))),
-					\partialDensity, this.partialDensity,
-					\delta, 1,
-					\amp,  this.tempo.reciprocal.sqrt * amp,
-					\ring, this.ringTime,
-					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5),
-					\group, this.group,
-				)
-			);
+			Pdefn(this.name,
+				Pfunc {//we hardcode freq and outbus positions for speed
+					defaultMsg[6] = melodyStream.next * baseFreq * remapFreqVar.pow(0.gauss(0.03)); //freq
+					defaultMsg[8] = busStream.next;
+					server.sendMsg(*defaultMsg);
+					deltaFactor;
+			});
 			semaphore.signal;
-			reEvalPDef = 0;
+			reEvalPdefn = 0;
 		}.fork};
 	}
-	/*
-	(
-var msg = Synth.basicNew(\xyz, s, 1000).newMsg(args: [
-	a: 1,
-	b: 1,
-	c: 1,
-	d: 1,
-	e: 1,
-	f: 1,
-	g: 1,
-	h: 1,
-	i: 1,
-	j: 1
-]);
-
-var a = Pfunc {|i|
-	msg[2] = s.nextNodeID;
-	s.sendMsg(*msg);
-}.asStream;
-
-bench {
-	100000.do { a.next };
-};
-)
-*/
 
 	type {
 		^\mel;
 	}
 
 	start {
-		stream = Plambda(
-			Ppar([melodyPattern, Pdef(name)], inf)
-		).play(clock, quant:1);
+		stream = Pdefn(name).play(clock);
 		accelerator.start;
 		^stream
 	}
@@ -271,16 +266,32 @@ bench {
 		^argsDict[\ringTime];
 	}
 
+	duration {
+		^this.ringTime;
+	}
+
 	ringTime_ {|val|
-		this.changeVal(\ringTime, val);
+		this.withSemaphore({
+			argsDict[\ringTime] = val;
+			defaultMsg.put(argsMsgMap[\ringTime], val);
+			defaultMsg.put(argsMsgMap[\duration], this.dB.dbamp * val * 1.5);
+		})
 	}
 
 	dB {
 		^argsDict[\dB];
 	}
 
+	amp {
+		^this.dB.dbamp;
+	}
+
 	dB_ {|val|
-		this.changeVal(\dB, val);
+		this.withSemaphore({
+			argsDict[\dB] = val;
+			defaultMsg.put(argsMsgMap[\amp], val.dbAmp * this.tempo.reciprocal.sqrt);
+			defaultMsg.put(argsMsgMap[\duration], val.dbAmp * this.ringTime * 1.5);
+		})
 	}
 
 	harmonicity {
@@ -288,7 +299,10 @@ bench {
 	}
 
 	harmonicity_ {|val|
-		this.changeVal(\harmonicity, val);
+		this.withSemaphore({
+			argsDict[\harmonicity] = val;
+			defaultMsg.put(argsMsgMap[\partialDensity], this.partialDensity);
+		})
 	}
 
 	partialDensity {|harmonicity|
@@ -302,7 +316,10 @@ bench {
 	}
 
 	freqVar_ {|val|
-		this.changeVal(\freqVar, val);
+		this.withSemaphore({
+			argsDict[\freqVar] = val;
+		});
+		this.evalPdefn;
 	}
 
 	mappedArgs {
