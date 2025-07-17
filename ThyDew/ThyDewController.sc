@@ -72,7 +72,7 @@ ThyDewController {
 		accel = 0.0;
 		accelMod = 0.0;
 		instrument = newInstrument;
-		busIndices = (newBus.index .. newBus.index + newBus.numChannels-1);
+		busIndices = newBus;
 		group = newGroup;
 		semaphore = Semaphore(1);
 		reEvalPdefn = 0; //we don't want to reeval the Pdefn to many times :3
@@ -88,11 +88,7 @@ ThyDewController {
 
 	//interfacing with Args:
 	changeVal {|key, val|
-		{
-			semaphore.wait;
-			argsDict[key] = val;
-			semaphore.signal;
-		}.fork;
+		^Message.new(this, (key++\_).asSymbol).value(val);
 	}
 
 	withSemaphore {|func, args|
@@ -126,9 +122,8 @@ ThyDewController {
 			clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
 			if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {accel = 0};
 			this.withSemaphore({
-				var tempoAmpMod = this.amp * this.tempo.reciprocal.sqrt;
-				defaultMsg.put(argsMsgMap[\amp], tempoAmpMod);
-				defaultMsg.put(argsMsgMap[\duration], this.tempoAmpMod * this.duration * 1.5);
+				defaultMsg.put(argsMsgMap[\amp], this.amp * this.tempo.reciprocal.sqrt.min(4));
+				defaultMsg.put(argsMsgMap[\duration], this.duration);
 			})
 		}
 	}
@@ -202,8 +197,8 @@ ThyDewMelodic : ThyDewController {
 		melody = newMelody;
 		argsDict = IdentityDictionary.newFrom([
 			\ringTime, startArgs[\ringTime] ? 1.0, //ringTime
-			\dB, startArgs[\dB] ? 1.0, //dB
-			\harmonicity, startArgs[\harmonicity] ? 1.0, //harmonicity
+			\dB, startArgs[\dB] ? 0.0, //dB
+			\harmonicity, startArgs[\harmonicity] ? 0.0, //harmonicity
 			\freqVar, startArgs[\freqVar] ? 0.0  //freqVar
 		]).know_(true);
 
@@ -212,7 +207,7 @@ ThyDewMelodic : ThyDewController {
 	}
 
 	initStreams {
-		var msgData = this.createDefaultMessage(
+		var msgData = ThyDewController.createDefaultMessage(
 			instrument,
 			Server.default,
 			group,
@@ -223,7 +218,6 @@ ThyDewMelodic : ThyDewController {
 				amp: this.dB.dbamp,
 				ringTime: this.ringTime,
 				duration: this.dB.dbamp * this.ringTime * 1.5,
-				group: this.group
 			]
 		);
 		defaultMsg = msgData[0];
@@ -267,14 +261,14 @@ ThyDewMelodic : ThyDewController {
 	}
 
 	duration {
-		^this.ringTime;
+		^this.amp.min(1) * this.tempo.reciprocal.sqrt * this.ringTime * 1.5;
 	}
 
 	ringTime_ {|val|
 		this.withSemaphore({
 			argsDict[\ringTime] = val;
 			defaultMsg.put(argsMsgMap[\ringTime], val);
-			defaultMsg.put(argsMsgMap[\duration], this.dB.dbamp * val * 1.5);
+			defaultMsg.put(argsMsgMap[\duration], this.duration);
 		})
 	}
 
@@ -289,8 +283,8 @@ ThyDewMelodic : ThyDewController {
 	dB_ {|val|
 		this.withSemaphore({
 			argsDict[\dB] = val;
-			defaultMsg.put(argsMsgMap[\amp], val.dbAmp * this.tempo.reciprocal.sqrt);
-			defaultMsg.put(argsMsgMap[\duration], val.dbAmp * this.ringTime * 1.5);
+			defaultMsg.put(argsMsgMap[\amp], this.amp * this.tempo.reciprocal.sqrt.min(4));
+			defaultMsg.put(argsMsgMap[\duration], this.duration);
 		})
 	}
 
