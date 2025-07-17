@@ -14,7 +14,9 @@ ThyDewRhythmicController: rhythmic droplet control :3
 
 ThyDewController {
 	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio, <accelBaseCoef;
-	var <>index, <>baseFreq, <>accelMod, <accel, <name, <clock, <stream, argsDict, <instrument, <busIndices, <group, <tempoRange, <tempoLimit, semaphore, reEvalPDef, accelerator;
+	var <>index, <>baseFreq, <>accelMod=0.0, <>deltaFactor=1.0;
+	var <accel, <name, <clock, <stream, <instrument, <busIndices, <group, <tempoRange, <tempoLimit;
+	var semaphore, reEvalPDef, accelerator, defaultMsg, argsDict, argsMsgMap;
 
 	*new {|name|
 		var obj = super.new;
@@ -55,6 +57,16 @@ ThyDewController {
 
 	}
 
+	*createDefaultMessage {|instrument, server, group, args|
+		var argMaps = IdentityDictionary.newFrom(
+			args.clump(2).collect({|pair, idx|
+				[pair[0], 2*idx+6]
+			}).flatten
+		);
+		var msg = Synth.basicNew(instrument, server, -1).newMsg(group, args: args);
+		^[msg, argMaps]
+	}
+
 	initDew {|newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo|
 		name = newName.asSymbol;
 		index = newIndex;
@@ -70,7 +82,11 @@ ThyDewController {
 		tempoLimit = maxTempo;
 		clock = TempoClock(startTempo);
 		accelerator = Task(ThyDewController.getAccelFunc(25, this));
-		this.evalPDef;
+
+	}
+
+	defaultMsg {
+		^defaultMsg.copy;
 	}
 
 	//interfacing with Args:
@@ -173,7 +189,19 @@ ThyDewMelodic : ThyDewController {
 			\freqVar, startArgs[\freqVar] ? 0.0  //freqVar
 		]);
 		argsDict.know = true;
-		^super.initDew(newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo);
+		super.initDew(newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo);
+		this.initMsgStreams;
+	}
+
+	initMsgStreams {
+		var msgData = this.createDefaultMessage(
+			instrument,
+			Server.default,
+			group, [
+				\freq, baseFreq
+		]);
+		defaultMsg = msgData[0];
+		argsMsgMap = msgData[1];
 	}
 
 	evalPDef {
@@ -200,6 +228,31 @@ ThyDewMelodic : ThyDewController {
 			reEvalPDef = 0;
 		}.fork};
 	}
+	/*
+	(
+var msg = Synth.basicNew(\xyz, s, 1000).newMsg(args: [
+	a: 1,
+	b: 1,
+	c: 1,
+	d: 1,
+	e: 1,
+	f: 1,
+	g: 1,
+	h: 1,
+	i: 1,
+	j: 1
+]);
+
+var a = Pfunc {|i|
+	msg[2] = s.nextNodeID;
+	s.sendMsg(*msg);
+}.asStream;
+
+bench {
+	100000.do { a.next };
+};
+)
+*/
 
 	type {
 		^\mel;
