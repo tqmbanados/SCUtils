@@ -1,16 +1,20 @@
 //Class that facilitates controlling Dew droplet chains
 
 /*
+TODO (PRIORITY): rework
+- direct messaging/Pfunc/Pchain?
+- add outbus, group
+
 TODO: separate in three classes:
 ThyDewController: Abstract Class
 ThyDewMelodicController: melodic Droplet control
 ThyDewRhythmicController: rhythmic droplet control :3
-the difference between them is mostly in the PDef section
 */
+
 
 ThyDewController {
 	classvar <dewList, <maxTempo, <baseMelody, <baseArpeggio, <accelBaseCoef;
-	var <>index, <>baseFreq, <>accel, <name, <clock, <stream, argsDict, <instrument, <tempoRange, <tempoLimit, semaphore, reEvalPDef, accelerator;
+	var <>index, <>baseFreq, <>accelMod, <accel, <name, <clock, <stream, argsDict, <instrument, <busIndices, <group, <tempoRange, <tempoLimit, semaphore, reEvalPDef, accelerator;
 
 	*new {|name|
 		var obj = super.new;
@@ -51,12 +55,15 @@ ThyDewController {
 
 	}
 
-	initDew {|newName, newIndex, newFreq, newInstrument, startTempo|
+	initDew {|newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo|
 		name = newName.asSymbol;
 		index = newIndex;
 		baseFreq = newFreq;
 		accel = 0.0;
+		accelMod = 0.0;
 		instrument = newInstrument;
+		busIndices = newBusses;
+		group = newGroup;
 		semaphore = Semaphore(1);
 		reEvalPDef = 0; //we don't want to reeval the pdef to many times :3
 		tempoRange = [0.01, maxTempo];
@@ -87,7 +94,7 @@ ThyDewController {
 	}
 
 	prAccelTempo {|evalsPerSec|
-		this.tempo = this.tempo * accelBaseCoef.pow(accel/evalsPerSec);
+		this.tempo = this.tempo * accelBaseCoef.pow((accel+accelMod)/evalsPerSec);
 	}
 
 	tempo {
@@ -102,7 +109,8 @@ ThyDewController {
 	accelTo {|target, time, limitAtTarget=true|
 		//target tempo, time in seconds. if limit at target is true, tempo will stop accel at target
 		//changes current accel value according to the input
-		this.accel = (target/this.tempo).log2/(time * accelBaseCoef.log2);
+		accelMod = 0.0;
+		accel = (target/this.tempo).log2/(time * accelBaseCoef.log2);
 		if (limitAtTarget) {tempoLimit = target};
 		^this.accel;
 
@@ -140,35 +148,38 @@ ThyDewController {
 
 }
 
-
 ThyDewMelodic : ThyDewController {
 	var melody, melodyPattern;
 
-	*new {|index=0, baseFreq=220.0, instrument=\default, startTempo=1, melody, startArgs|
+	*new {|index=0, baseFreq=220.0, instrument=\default, busses, group, startTempo=1, melody, startArgs|
 		var name = \dew ++ \_ ++ instrument ++ \_ ++ index;
 		var obj = super.new(name);
 		melody = if (melody.isKindOf(SequenceableCollection)) {melody} {baseMelody};
 		startArgs = if (startArgs.isKindOf(IdentityDictionary)) {startArgs} {IdentityDictionary.new};
-		obj.initDew(name, index, baseFreq, instrument, startTempo, melody, startArgs);
+		busses = busses ? [0, 1];
+		group = if (group.isKindOf(Group)) {group} {Server.default.defaultGroup};
+
+		obj.initDew(name, index, baseFreq, instrument, busses, group, startTempo, melody, startArgs);
 		^obj;
 	}
 
-	initDew {|newName, newIndex, newFreq, newInstrument, startTempo, newMelody, startArgs|
+	initDew {|newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo, newMelody, startArgs|
 		melody = newMelody;
 		melodyPattern = Plet(\melody, Pseq(melody, inf), 1);
 		argsDict = IdentityDictionary.newFrom([
 			\ringTime, startArgs[\ringTime] ? 1.0, //ringTime
-			\amp, startArgs[\amp] ? 1.0, //amp
+			\dB, startArgs[\dB] ? 1.0, //dB
 			\harmonicity, startArgs[\harmonicity] ? 1.0, //harmonicity
 			\freqVar, startArgs[\freqVar] ? 0.0  //freqVar
 		]);
 		argsDict.know = true;
-		^super.initDew(newName, newIndex, newFreq, newInstrument, startTempo);
+		^super.initDew(newName, newIndex, newFreq, newInstrument, newBusses, newGroup, startTempo);
 	}
 
 	evalPDef {
 		if (reEvalPDef == 0) {{
 			var remapFreqVar = 1 + this.freqVar.pow(2);
+			var amp = this.dB.dbamp;
 			reEvalPDef = 1;
 			semaphore.wait;
 			Pdef(this.name,
@@ -177,11 +188,12 @@ ThyDewMelodic : ThyDewController {
 					\freq, (Pget(\melody, default: 1, repeats: inf)
 						* this.baseFreq
 						* remapFreqVar.pow(Pgauss(0, 0.03))),
-					\harmonicity, this.harmonicity,
+					\partialDensity, this.partialDensity,
 					\delta, 1,
-					\amp,  this.tempo.reciprocal.sqrt * this.amp,
+					\amp,  this.tempo.reciprocal.sqrt * amp,
 					\ring, this.ringTime,
-					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5)
+					\duration, (Pkey(\ring, inf) * Pkey(\amp, inf) * 1.5),
+					\group, this.group,
 				)
 			);
 			semaphore.signal;
@@ -210,12 +222,12 @@ ThyDewMelodic : ThyDewController {
 		this.changeVal(\ringTime, val);
 	}
 
-	amp {
-		^argsDict[\amp];
+	dB {
+		^argsDict[\dB];
 	}
 
-	amp_ {|val|
-		this.changeVal(\amp, val);
+	dB_ {|val|
+		this.changeVal(\dB, val);
 	}
 
 	harmonicity {
@@ -224,6 +236,11 @@ ThyDewMelodic : ThyDewController {
 
 	harmonicity_ {|val|
 		this.changeVal(\harmonicity, val);
+	}
+
+	partialDensity {|harmonicity|
+		harmonicity = harmonicity ? this.harmonicity;
+		^(harmonicity + (200*harmonicity.pow(2) + harmonicity + 1).reciprocal)
 	}
 
 
@@ -238,12 +255,11 @@ ThyDewMelodic : ThyDewController {
 	mappedArgs {
 		^[
 			this.ringTime.linlin(0.0, 6.0, 0.0, 1.0).min(1.0),
-			this.amp.linlin(0.0, 2.0, 0.0, 1.0).min(1.0),
-			(this.harmonicity*pi).cos.abs,
-			this.freqVar.linlin(0.0, 2.0, 0.0, 1,0).min(1.0)
+			this.dB.linlin(-48, 24, 0.0, 1.0).min(1.0),
+			this.harmonicity.linlin(0.0, 3.0, 0.0, 1.0).min(1.0),
+			(this.freqVar+0.01).explin(0.01, 2.0, 0.0, 1,0).min(1.0)
 		]
 	}
 
 
 }
-

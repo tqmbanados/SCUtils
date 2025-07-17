@@ -38,7 +38,7 @@ ThyDewGUI {
 			typeView = StaticText(view).string_("type");
 			baseFreqView = StaticText(view).string_("baseFreq");
 			baseInfoGrid = GridLayout.rows(
-				[[indexView,      a:\left],   25, nil, 25, [typeView, a:\left]],
+				[[indexView,      a:\left], 25, nil, 25, [typeView, a:\left]],
 				[[instrumentView, a:\left], 25, nil, 25, [baseFreqView, a:\left]]
 			);
 
