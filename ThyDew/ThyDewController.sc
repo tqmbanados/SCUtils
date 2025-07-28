@@ -120,12 +120,16 @@ ThyDewController {
 	tempo_ {|newTempo|
 		if (newTempo != this.tempo) {
 			clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
-			if (abs(1-(clock.tempo/tempoLimit.max(0.0001))) < 0.001 ) {accel = 0};
+			if (this.getCloseness > 0.0001 ) {accel = 0};
 			this.withSemaphore({
 				defaultMsg.put(argsMsgMap[\amp], this.amp * this.tempo.reciprocal.sqrt.min(4));
 				defaultMsg.put(argsMsgMap[\duration], this.duration);
 			})
 		}
+	}
+
+	getCloseness {
+		^accel.log.sign * (1.0-(tempoLimit.max(0.0001)/clock.tempo.max(0.0001)));
 	}
 
 	amp {
