@@ -120,7 +120,7 @@ ThyDewController {
 	tempo_ {|newTempo|
 		if (newTempo != this.tempo) {
 			clock.tempo = newTempo.max(tempoRange[0]).min(tempoRange[1]);
-			if (this.getCloseness > 0.0001 ) {accel = 0};
+			if (this.getCloseness.postln > 0.0 ) {accel = 0};
 			this.withSemaphore({
 				defaultMsg.put(argsMsgMap[\amp], this.amp * this.tempo.reciprocal.sqrt.min(4));
 				defaultMsg.put(argsMsgMap[\duration], this.duration);
@@ -129,7 +129,7 @@ ThyDewController {
 	}
 
 	getCloseness {
-		^accel.log.sign * (1.0-(tempoLimit.max(0.0001)/clock.tempo.max(0.0001)));
+		^accel.log.sign * (0.9999-(clock.tempo.max(0.0001)/tempoLimit.max(0.0001)).postln);
 	}
 
 	amp {
@@ -183,6 +183,7 @@ ThyDewController {
 }
 
 ThyDewMelodic : ThyDewController {
+	//performs simple, repetitive melody with a repeated rhythm
 	var <melody, melodyStream;
 
 	*new {|index=0, baseFreq=220.0, instrument=\default, busses, group, startTempo=1, melody, startArgs|
@@ -230,6 +231,10 @@ ThyDewMelodic : ThyDewController {
 		melodyStream = Pseq(melody, inf).asStream;
 		busStream = Pseq(busIndices, inf).asStream;
 		this.evalPdefn;
+	}
+
+	setCustomMelodyStream {|stream|
+		melodyStream = if (stream.respondsTo(\next)) {stream} {melodyStream};
 	}
 
 	evalPdefn {
@@ -328,6 +333,12 @@ ThyDewMelodic : ThyDewController {
 			(this.freqVar+0.01).explin(0.01, 2.0, 0.0, 1,0).min(1.0)
 		]
 	}
+}
+
+
+ThyDewBeat : ThyDewController {
+	//design to play more complex rhythms with timbric melody
+	var deltaStream, ampStream, instrStream;
 
 
 }
